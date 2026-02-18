@@ -1,6 +1,9 @@
 name: 'KarasuLab Mod Releaser'
 description: 'Automated release workflow for Minecraft mods using Release Please and mc-publish.'
 author: 'KarasuLab'
+branding:
+  icon: 'package'
+  color: 'blue'
 inputs:
   modrinth_project_id:
     description: 'Modrinth Project ID'
