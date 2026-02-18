@@ -1,0 +1,184 @@
+name: 'KarasuLab Mod Releaser'
+description: 'Automated release workflow for Minecraft mods using Release Please and mc-publish.'
+author: 'KarasuLab'
+inputs:
+  modrinth_project_id:
+    description: 'Modrinth Project ID'
+    required: true
+  modrinth_token:
+    description: 'Modrinth Token'
+    required: true
+  curseforge_project_id:
+    description: 'CurseForge Project ID'
+    required: true
+  curseforge_token:
+    description: 'CurseForge Token'
+    required: true
+  config_path:
+    description: 'Path to the config file'
+    required: false
+    default: 'karasulab-mod-releaser-config.json'
+  release_please_config:
+    description: 'Path to release-please-config.json'
+    required: false
+    default: 'release-please-config.json'
+  release_please_manifest:
+    description: 'Path to .release-please-manifest.json'
+    required: false
+    default: '.release-please-manifest.json'
+
+runs:
+  using: "composite"
+  steps:
+    - name: Run Release Please
+      id: release
+      uses: googleapis/release-please-action@v4
+      with:
+        token: ${{ github.token }}
+        config-file: ${{ inputs.release_please_config }}
+        manifest-file: ${{ inputs.release_please_manifest }}
+        target-branch: ${{ github.ref_name }}
+
+    - name: Checkout
+      if: ${{ steps.release.outputs.release_created }}
+      uses: actions/checkout@v4
+
+    - name: Load Config
+      if: ${{ steps.release.outputs.release_created }}
+      id: config
+      shell: bash
+      run: |
+        CONFIG_FILE="${{ inputs.config_path }}"
+        
+        # Default values
+        JAVA_VERSION="21"
+        LOADERS="fabric"
+        
+        if [ -f "$CONFIG_FILE" ]; then
+          echo "Loading config from $CONFIG_FILE"
+          JAVA_VERSION=$(jq -r '.java // 21' "$CONFIG_FILE")
+          # Convert JSON array ["fabric", "forge"] to "fabric\nforge" for mc-publish
+          LOADERS=$(jq -r '.loaders | join("\n") // "fabric"' "$CONFIG_FILE")
+        else
+          echo "Config file not found: $CONFIG_FILE, using defaults."
+        fi
+
+        echo "java_version=$JAVA_VERSION" >> $GITHUB_OUTPUT
+        {
+          echo "loaders<<LOADER_EOF"
+          echo "$LOADERS"
+          echo "LOADER_EOF"
+        } >> $GITHUB_OUTPUT
+
+    - name: Resolve Dependencies
+      if: ${{ steps.release.outputs.release_created }}
+      id: deps
+      shell: bash
+      run: |
+        set -euo pipefail
+        CONFIG_FILE="${{ inputs.config_path }}"
+        
+        # Process gradle dependencies if build.gradle exists
+        if [ -f "build.gradle" ]; then
+          # Extract modImplementation and modApi lines
+          GRADLE_DEPS=$(grep -oP '(modImplementation|modApi)\s*[\("]+([^"]+):([^":]+):' build.gradle \
+            | grep -oP '[a-z][a-z0-9._-]+:[a-z][a-z0-9._-]+' \
+            | sort -u || true)
+        else
+          GRADLE_DEPS=""
+        fi
+
+        MC_PUBLISH_DEPS=""
+
+        if [ -n "$GRADLE_DEPS" ] && [ -f "$CONFIG_FILE" ]; then
+           while IFS= read -r maven_coord; do
+            [ -z "$maven_coord" ] && continue
+            
+            # Look up in config dependencies object
+            ENTRY=$(jq -r --arg key "$maven_coord" '.dependencies[$key] // empty' "$CONFIG_FILE")
+            [ -z "$ENTRY" ] && continue
+
+            NAME=$(echo "$ENTRY" | jq -r '.name')
+            TYPE=$(echo "$ENTRY" | jq -r '.type')
+            MODRINTH_ID=$(echo "$ENTRY" | jq -r '.modrinth // empty')
+            CF_ID=$(echo "$ENTRY" | jq -r '.curseforge // empty')
+
+            # mc-publish format: name@version(type){modrinth:id}{curseforge:id}
+            PLATFORM_BLOCK=""
+            [ -n "$MODRINTH_ID" ] && PLATFORM_BLOCK="${PLATFORM_BLOCK}{modrinth:${MODRINTH_ID}}"
+            [ -n "$CF_ID" ] && PLATFORM_BLOCK="${PLATFORM_BLOCK}{curseforge:${CF_ID}}"
+
+            MC_PUBLISH_DEPS="${MC_PUBLISH_DEPS}${NAME}@*($TYPE)${PLATFORM_BLOCK}"$'\n'
+          done <<< "$GRADLE_DEPS"
+        fi
+
+        # Write to outputs (multiline)
+        {
+          echo "mc_publish_deps<<DEPS_EOF"
+          echo "$MC_PUBLISH_DEPS"
+          echo "DEPS_EOF"
+        } >> $GITHUB_OUTPUT
+
+    - name: Extract Gradle Properties
+      if: ${{ steps.release.outputs.release_created }}
+      id: props
+      shell: bash
+      run: |
+        if [ -f "gradle.properties" ]; then
+            ARCHIVES_BASE_NAME=$(awk -F= '/^archives_base_name/ {gsub(/[[:space:]]/, "", $2); print $2}' gradle.properties)
+            MINECRAFT_VERSION=$(awk -F= '/^minecraft_version/ {gsub(/[[:space:]]/, "", $2); print $2}' gradle.properties)
+            MOD_VERSION=$(awk -F= '/^mod_version/ {gsub(/[[:space:]]/, "", $2); print $2}' gradle.properties)
+            
+            echo "archives_base_name=$ARCHIVES_BASE_NAME" >> $GITHUB_OUTPUT
+            echo "minecraft_version=$MINECRAFT_VERSION" >> $GITHUB_OUTPUT
+            echo "mod_version=$MOD_VERSION" >> $GITHUB_OUTPUT
+        else
+             echo "gradle.properties not found!"
+             exit 1
+        fi
+
+    - name: Set up JDK
+      if: ${{ steps.release.outputs.release_created }}
+      uses: actions/setup-java@v4
+      with:
+        java-version: ${{ steps.config.outputs.java_version }}
+        distribution: 'temurin'
+
+    - name: Grant execute permission for gradlew
+      if: ${{ steps.release.outputs.release_created }}
+      shell: bash
+      run: chmod +x gradlew
+
+    - name: Build with Gradle
+      if: ${{ steps.release.outputs.release_created }}
+      shell: bash
+      run: ./gradlew build
+
+    - name: Upload to GitHub Release
+      if: ${{ steps.release.outputs.release_created }}
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+      run: |
+        gh release upload ${{ steps.release.outputs.tag_name }} \
+          build/libs/${{ steps.props.outputs.archives_base_name }}-*.jar \
+          --clobber
+
+    - name: Publish to Modrinth & CurseForge
+      if: ${{ steps.release.outputs.release_created }}
+      uses: Kir-Antipov/mc-publish@v3.3
+      with:
+        modrinth-id: ${{ inputs.modrinth_project_id }}
+        modrinth-token: ${{ inputs.modrinth_token }}
+        curseforge-id: ${{ inputs.curseforge_project_id }}
+        curseforge-token: ${{ inputs.curseforge_token }}
+        files: |
+          build/libs/${{ steps.props.outputs.archives_base_name }}-${{ steps.props.outputs.mod_version }}-${{ steps.props.outputs.minecraft_version }}.jar
+        name: "${{ steps.props.outputs.archives_base_name }}-${{ steps.props.outputs.mod_version }}-${{ steps.props.outputs.minecraft_version }}"
+        version: ${{ steps.release.outputs.tag_name }}
+        version-type: release
+        changelog: ${{ steps.release.outputs.body }}
+        loaders: ${{ steps.config.outputs.loaders }}
+        game-versions: ${{ steps.props.outputs.minecraft_version }}
+        dependencies: ${{ steps.deps.outputs.mc_publish_deps }}
+        java: ${{ steps.config.outputs.java_version }}
