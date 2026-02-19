@@ -20,16 +20,19 @@ if [ -f "$CONFIG_FILE" ]; then
     LOADERS=$(jq -r '.loaders | join("\n") // "fabric"' "$CONFIG_FILE")
     RELEASE_TITLE_FORMAT=$(jq -r '.release_title_format // "{archives_base_name}-{mod_version}-{minecraft_version}"' "$CONFIG_FILE")
     JAR_NAME_FORMAT=$(jq -r '.jar_name_format // "{archives_base_name}-{mod_version}-{minecraft_version}.jar"' "$CONFIG_FILE")
+    RELEASE_CHANNEL=$(jq -r '."release-channel" // "release"' "$CONFIG_FILE")
 else
     echo "Config file not found: $CONFIG_FILE, using defaults."
     JAVA_VERSION="21"
     LOADERS="fabric"
     RELEASE_TITLE_FORMAT="{archives_base_name}-{mod_version}-{minecraft_version}"
     JAR_NAME_FORMAT="{archives_base_name}-{mod_version}-{minecraft_version}.jar"
+    RELEASE_CHANNEL="release"
 fi
 
 echo "java_version=$JAVA_VERSION" >> $GITHUB_OUTPUT
 echo "release_title_format=$RELEASE_TITLE_FORMAT" >> $GITHUB_OUTPUT
+echo "release_channel=$RELEASE_CHANNEL" >> $GITHUB_OUTPUT
 echo "jar_name_format=$JAR_NAME_FORMAT" >> $GITHUB_OUTPUT
 {
     echo "loaders<<LOADER_EOF"

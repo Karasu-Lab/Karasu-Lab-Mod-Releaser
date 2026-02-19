@@ -126,7 +126,7 @@ runs:
           ${{ inputs.working_directory }}/build/libs/${{ steps.names.outputs.final_jar_name }}
         name: "${{ steps.names.outputs.final_release_title }}"
         version: ${{ steps.release.outputs.tag_name }}
-        version-type: release
+        version-type: ${{ steps.config.outputs.release_channel }}
         changelog: ${{ steps.release.outputs.body }}
         loaders: ${{ steps.config.outputs.loaders }}
         game-versions: ${{ steps.props.outputs.minecraft_version }}
