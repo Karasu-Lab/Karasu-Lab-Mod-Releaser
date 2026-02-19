@@ -59,12 +59,31 @@ Your `gradle.properties` must contain the following keys, which are used to name
 - `mod_version`
 
 ### 2. `karasulab-mod-releaser-config.json`
-This file configures project-specific settings like Java version and dependencies.
+This file configures project-specific settings like Java version, dependencies, and file naming.
+
+| Field | Description | Default |
+| :--- | :--- | :--- |
+| `java` | Java version to use. | `21` |
+| `loaders` | List of mod loaders (e.g., `["fabric", "forge"]`). | `["fabric"]` |
+| `dependencies` | Mod dependencies map. | `{}` |
+| `release_title_format` | Format for the release title on platforms. | `{archives_base_name}-{mod_version}-{minecraft_version}` |
+| `jar_name_format` | Format for the JAR filename to be uploaded. | `{archives_base_name}-{mod_version}-{minecraft_version}.jar` |
+
+#### Supported Placeholders
+You can use the following placeholders in `release_title_format` and `jar_name_format`:
+- `{archives_base_name}`: Extracted from `gradle.properties`.
+- `{mod_version}`: Extracted from `gradle.properties`.
+- `{minecraft_version}`: Extracted from `gradle.properties`.
+- `{version}`: The Git release tag (e.g., `v1.0.0`).
+
+#### Example
 
 ```json
 {
   "java": 21,
   "loaders": ["fabric"],
+  "release_title_format": "{archives_base_name} {mod_version} for MC {minecraft_version}",
+  "jar_name_format": "{archives_base_name}-{mod_version}.jar",
   "dependencies": {
     "fabric-api": {
       "name": "fabric-api",

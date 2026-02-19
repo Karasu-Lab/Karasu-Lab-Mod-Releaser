@@ -56,17 +56,25 @@ runs:
         # Default values
         JAVA_VERSION="21"
         LOADERS="fabric"
+        RELEASE_TITLE_FORMAT="{archives_base_name}-{mod_version}-{minecraft_version}"
+        JAR_NAME_FORMAT="{archives_base_name}-{mod_version}-{minecraft_version}.jar"
         
         if [ -f "$CONFIG_FILE" ]; then
           echo "Loading config from $CONFIG_FILE"
           JAVA_VERSION=$(jq -r '.java // 21' "$CONFIG_FILE")
           # Convert JSON array ["fabric", "forge"] to "fabric\nforge" for mc-publish
           LOADERS=$(jq -r '.loaders | join("\n") // "fabric"' "$CONFIG_FILE")
+          
+          # Load formats
+          RELEASE_TITLE_FORMAT=$(jq -r '.release_title_format // "{archives_base_name}-{mod_version}-{minecraft_version}"' "$CONFIG_FILE")
+          JAR_NAME_FORMAT=$(jq -r '.jar_name_format // "{archives_base_name}-{mod_version}-{minecraft_version}.jar"' "$CONFIG_FILE")
         else
           echo "Config file not found: $CONFIG_FILE, using defaults."
         fi
 
         echo "java_version=$JAVA_VERSION" >> $GITHUB_OUTPUT
+        echo "release_title_format=$RELEASE_TITLE_FORMAT" >> $GITHUB_OUTPUT
+        echo "jar_name_format=$JAR_NAME_FORMAT" >> $GITHUB_OUTPUT
         {
           echo "loaders<<LOADER_EOF"
           echo "$LOADERS"
@@ -140,6 +148,34 @@ runs:
              exit 1
         fi
 
+    - name: Construct Names
+      if: ${{ steps.release.outputs.release_created }}
+      id: names
+      shell: bash
+      run: |
+        TITLE_FMT="${{ steps.config.outputs.release_title_format }}"
+        JAR_FMT="${{ steps.config.outputs.jar_name_format }}"
+        
+        ARCHIVES_BASE_NAME="${{ steps.props.outputs.archives_base_name }}"
+        MC_VERSION="${{ steps.props.outputs.minecraft_version }}"
+        MOD_VERSION="${{ steps.props.outputs.mod_version }}"
+        TAG_NAME="${{ steps.release.outputs.tag_name }}"
+        
+        # Replace placeholders
+        # We use sed for simple replacement
+        FINAL_TITLE=$(echo "$TITLE_FMT" | sed -e "s/{archives_base_name}/$ARCHIVES_BASE_NAME/g" \
+          -e "s/{minecraft_version}/$MC_VERSION/g" \
+          -e "s/{mod_version}/$MOD_VERSION/g" \
+          -e "s/{version}/$TAG_NAME/g")
+          
+        FINAL_JAR=$(echo "$JAR_FMT" | sed -e "s/{archives_base_name}/$ARCHIVES_BASE_NAME/g" \
+          -e "s/{minecraft_version}/$MC_VERSION/g" \
+          -e "s/{mod_version}/$MOD_VERSION/g" \
+          -e "s/{version}/$TAG_NAME/g")
+          
+        echo "final_release_title=$FINAL_TITLE" >> $GITHUB_OUTPUT
+        echo "final_jar_name=$FINAL_JAR" >> $GITHUB_OUTPUT
+
     - name: Set up JDK
       if: ${{ steps.release.outputs.release_created }}
       uses: actions/setup-java@v4
@@ -164,7 +200,7 @@ runs:
         GITHUB_TOKEN: ${{ github.token }}
       run: |
         gh release upload ${{ steps.release.outputs.tag_name }} \
-          build/libs/${{ steps.props.outputs.archives_base_name }}-*.jar \
+          build/libs/${{ steps.names.outputs.final_jar_name }} \
           --clobber
 
     - name: Publish to Modrinth & CurseForge
@@ -176,8 +212,8 @@ runs:
         curseforge-id: ${{ inputs.curseforge_project_id }}
         curseforge-token: ${{ inputs.curseforge_token }}
         files: |
-          build/libs/${{ steps.props.outputs.archives_base_name }}-${{ steps.props.outputs.mod_version }}-${{ steps.props.outputs.minecraft_version }}.jar
-        name: "${{ steps.props.outputs.archives_base_name }}-${{ steps.props.outputs.mod_version }}-${{ steps.props.outputs.minecraft_version }}"
+          build/libs/${{ steps.names.outputs.final_jar_name }}
+        name: "${{ steps.names.outputs.final_release_title }}"
         version: ${{ steps.release.outputs.tag_name }}
         version-type: release
         changelog: ${{ steps.release.outputs.body }}
