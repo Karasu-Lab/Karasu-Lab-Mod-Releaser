@@ -19,11 +19,18 @@ fi
 BUILD_GRADLE="$TARGET_DIR/build.gradle"
 
 if [ -f "$BUILD_GRADLE" ]; then
-    GRADLE_DEPS=$(grep -oP '(modImplementation|modApi)\s*[\("]+([^"]+):([^":]+):' "$BUILD_GRADLE" \
+    GRADLE_DEPS=$(grep -oP '(modImplementation|modApi|implementation)\s*[\("]+([^"]+):([^":]+):' "$BUILD_GRADLE" \
     | grep -oP '[a-z][a-z0-9._-]+:[a-z][a-z0-9._-]+' \
     | sort -u || true)
 else
     GRADLE_DEPS=""
+fi
+
+if [ -f "$CONFIG_FILE" ]; then
+    EXTRA_DEPS=$(jq -r '.extra_dependencies[] // empty' "$CONFIG_FILE")
+    if [ -n "$EXTRA_DEPS" ]; then
+        GRADLE_DEPS="${GRADLE_DEPS}"$'\n'"${EXTRA_DEPS}"
+    fi
 fi
 
 MC_PUBLISH_DEPS=""
