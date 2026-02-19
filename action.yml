@@ -93,6 +93,11 @@ runs:
       shell: bash
       run: chmod +x gradlew
 
+    - name: Build Included Builds
+      if: ${{ steps.release.outputs.release_created }}
+      shell: bash
+      run: bash ${{ github.action_path }}/scripts/build-included-builds.sh "${{ inputs.working_directory }}"
+
     - name: Build with Gradle
       if: ${{ steps.release.outputs.release_created }}
       shell: bash
