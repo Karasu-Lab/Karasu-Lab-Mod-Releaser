@@ -49,6 +49,7 @@ jobs:
 | `config_path` | Path to the mod releaser config file. | No | `karasulab-mod-releaser-config.json` |
 | `release_please_config` | Path to `release-please-config.json`. | No | `release-please-config.json` |
 | `release_please_manifest` | Path to `.release-please-manifest.json`. | No | `.release-please-manifest.json` |
+| `working_directory` | Working directory for the mod project. | No | `.` |
 
 ## Configuration
 

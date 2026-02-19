@@ -29,6 +29,10 @@ inputs:
     description: 'Path to .release-please-manifest.json'
     required: false
     default: '.release-please-manifest.json'
+  working_directory:
+    description: 'Working directory for the mod project'
+    required: false
+    default: '.'
 
 runs:
   using: "composite"
@@ -50,136 +54,32 @@ runs:
       if: ${{ steps.release.outputs.release_created }}
       id: config
       shell: bash
-      run: |
-        CONFIG_FILE="${{ inputs.config_path }}"
-        
-        JAVA_VERSION="21"
-        LOADERS="fabric"
-        RELEASE_TITLE_FORMAT="{archives_base_name}-{mod_version}-{minecraft_version}"
-        JAR_NAME_FORMAT="{archives_base_name}-{mod_version}-{minecraft_version}.jar"
-        
-        if [ -f "$CONFIG_FILE" ]; then
-          echo "Loading config from $CONFIG_FILE"
-          JAVA_VERSION=$(jq -r '.java // 21' "$CONFIG_FILE")
-          # Convert JSON array ["fabric", "forge"] to "fabric\nforge" for mc-publish
-          LOADERS=$(jq -r '.loaders | join("\n") // "fabric"' "$CONFIG_FILE")
-          
-          RELEASE_TITLE_FORMAT=$(jq -r '.release_title_format // "{archives_base_name}-{mod_version}-{minecraft_version}"' "$CONFIG_FILE")
-          JAR_NAME_FORMAT=$(jq -r '.jar_name_format // "{archives_base_name}-{mod_version}-{minecraft_version}.jar"' "$CONFIG_FILE")
-        else
-          echo "Config file not found: $CONFIG_FILE, using defaults."
-        fi
-
-        echo "java_version=$JAVA_VERSION" >> $GITHUB_OUTPUT
-        echo "release_title_format=$RELEASE_TITLE_FORMAT" >> $GITHUB_OUTPUT
-        echo "jar_name_format=$JAR_NAME_FORMAT" >> $GITHUB_OUTPUT
-        {
-          echo "loaders<<LOADER_EOF"
-          echo "$LOADERS"
-          echo "LOADER_EOF"
-        } >> $GITHUB_OUTPUT
+      run: bash ${{ github.action_path }}/scripts/load-config.sh "${{ inputs.working_directory }}" "${{ inputs.config_path }}"
 
     - name: Resolve Dependencies
       if: ${{ steps.release.outputs.release_created }}
       id: deps
       shell: bash
-      run: |
-        set -euo pipefail
-        CONFIG_FILE="${{ inputs.config_path }}"
-        
-        if [ -f "build.gradle" ]; then
-          # Extract modImplementation and modApi lines
-          GRADLE_DEPS=$(grep -oP '(modImplementation|modApi)\s*[\("]+([^"]+):([^":]+):' build.gradle \
-            | grep -oP '[a-z][a-z0-9._-]+:[a-z][a-z0-9._-]+' \
-            | sort -u || true)
-        else
-          GRADLE_DEPS=""
-        fi
-
-        MC_PUBLISH_DEPS=""
-
-        if [ -n "$GRADLE_DEPS" ] && [ -f "$CONFIG_FILE" ]; then
-           while IFS= read -r maven_coord; do
-            [ -z "$maven_coord" ] && continue
-            
-            ENTRY=$(jq -r --arg key "$maven_coord" '.dependencies[$key] // empty' "$CONFIG_FILE")
-            [ -z "$ENTRY" ] && continue
-
-            NAME=$(echo "$ENTRY" | jq -r '.name')
-            TYPE=$(echo "$ENTRY" | jq -r '.type')
-            MODRINTH_ID=$(echo "$ENTRY" | jq -r '.modrinth // empty')
-            CF_ID=$(echo "$ENTRY" | jq -r '.curseforge // empty')
-
-            PLATFORM_BLOCK=""
-            [ -n "$MODRINTH_ID" ] && PLATFORM_BLOCK="${PLATFORM_BLOCK}{modrinth:${MODRINTH_ID}}"
-            [ -n "$CF_ID" ] && PLATFORM_BLOCK="${PLATFORM_BLOCK}{curseforge:${CF_ID}}"
-
-            MC_PUBLISH_DEPS="${MC_PUBLISH_DEPS}${NAME}@*($TYPE)${PLATFORM_BLOCK}"$'\n'
-          done <<< "$GRADLE_DEPS"
-        fi
-
-        {
-          echo "mc_publish_deps<<DEPS_EOF"
-          echo "$MC_PUBLISH_DEPS"
-          echo "DEPS_EOF"
-        } >> $GITHUB_OUTPUT
+      run: bash ${{ github.action_path }}/scripts/resolve-dependencies.sh "${{ inputs.working_directory }}" "${{ inputs.config_path }}"
 
     - name: Extract Gradle Properties
       if: ${{ steps.release.outputs.release_created }}
       id: props
       shell: bash
-      run: |
-        if [ -f "gradle.properties" ]; then
-            ARCHIVES_BASE_NAME=$(grep -oP '(?i)^(archives_?base_?name)\s*=\s*\K[^\s]+' gradle.properties || echo "")
-            MINECRAFT_VERSION=$(grep -oP '(?i)^(minecraft_?version)\s*=\s*\K[^\s]+' gradle.properties || echo "")
-            MOD_VERSION=$(grep -oP '(?i)^(mod_?version)\s*=\s*\K[^\s]+' gradle.properties || echo "")
-            
-            echo "Extracted properties:"
-            echo "ARCHIVES_BASE_NAME: '$ARCHIVES_BASE_NAME'"
-            echo "MINECRAFT_VERSION: '$MINECRAFT_VERSION'"
-            echo "MOD_VERSION: '$MOD_VERSION'"
-
-            if [ -z "$ARCHIVES_BASE_NAME" ] || [ -z "$MINECRAFT_VERSION" ] || [ -z "$MOD_VERSION" ]; then
-              echo "Error: Failed to extract one or more required properties from gradle.properties."
-              echo "Please ensure archives_base_name, minecraft_version, and mod_version are defined."
-              exit 1
-            fi
-            
-            echo "archives_base_name=$ARCHIVES_BASE_NAME" >> $GITHUB_OUTPUT
-            echo "minecraft_version=$MINECRAFT_VERSION" >> $GITHUB_OUTPUT
-            echo "mod_version=$MOD_VERSION" >> $GITHUB_OUTPUT
-        else
-             echo "gradle.properties not found!"
-             exit 1
-        fi
+      run: bash ${{ github.action_path }}/scripts/extract-props.sh "${{ inputs.working_directory }}"
 
     - name: Construct Names
       if: ${{ steps.release.outputs.release_created }}
       id: names
       shell: bash
       run: |
-        TITLE_FMT="${{ steps.config.outputs.release_title_format }}"
-        JAR_FMT="${{ steps.config.outputs.jar_name_format }}"
-        
-        ARCHIVES_BASE_NAME="${{ steps.props.outputs.archives_base_name }}"
-        MC_VERSION="${{ steps.props.outputs.minecraft_version }}"
-        MOD_VERSION="${{ steps.props.outputs.mod_version }}"
-        TAG_NAME="${{ steps.release.outputs.tag_name }}"
-        
-        # Replace placeholders
-        # We use sed for simple replacement
-        FINAL_TITLE=$(echo "$TITLE_FMT" | sed -e "s/{archives_base_name}/$ARCHIVES_BASE_NAME/g" \
-          -e "s/{minecraft_version}/$MC_VERSION/g" \
-          -e "s/{mod_version}/$MOD_VERSION/g" \
-          -e "s/{version}/$TAG_NAME/g")
-          
-        FINAL_JAR=$(echo "$JAR_FMT" | sed -e "s/{archives_base_name}/$ARCHIVES_BASE_NAME/g" \
-          -e "s/{minecraft_version}/$MC_VERSION/g" \
-          -e "s/{mod_version}/$MOD_VERSION/g" \
-          -e "s/{version}/$TAG_NAME/g")
-          
-        echo "final_release_title=$FINAL_TITLE" >> $GITHUB_OUTPUT
-        echo "final_jar_name=$FINAL_JAR" >> $GITHUB_OUTPUT
+        bash ${{ github.action_path }}/scripts/construct-names.sh \
+          "${{ steps.config.outputs.release_title_format }}" \
+          "${{ steps.config.outputs.jar_name_format }}" \
+          "${{ steps.props.outputs.archives_base_name }}" \
+          "${{ steps.props.outputs.minecraft_version }}" \
+          "${{ steps.props.outputs.mod_version }}" \
+          "${{ steps.release.outputs.tag_name }}"
 
     - name: Set up JDK
       if: ${{ steps.release.outputs.release_created }}
@@ -204,8 +104,9 @@ runs:
       env:
         GITHUB_TOKEN: ${{ github.token }}
       run: |
+        TARGET_DIR="${{ inputs.working_directory }}"
         gh release upload ${{ steps.release.outputs.tag_name }} \
-          build/libs/${{ steps.names.outputs.final_jar_name }} \
+          "$TARGET_DIR/build/libs/${{ steps.names.outputs.final_jar_name }}" \
           --clobber
 
     - name: Publish to Modrinth & CurseForge
@@ -217,7 +118,7 @@ runs:
         curseforge-id: ${{ inputs.curseforge_project_id }}
         curseforge-token: ${{ inputs.curseforge_token }}
         files: |
-          build/libs/${{ steps.names.outputs.final_jar_name }}
+          ${{ inputs.working_directory }}/build/libs/${{ steps.names.outputs.final_jar_name }}
         name: "${{ steps.names.outputs.final_release_title }}"
         version: ${{ steps.release.outputs.tag_name }}
         version-type: release
