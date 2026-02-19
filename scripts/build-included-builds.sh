@@ -32,6 +32,9 @@ if [ -f "$SETTINGS_FILE" ]; then
                      else
                         echo "Warning: Submodule at $FULL_PATH does not have gradlew. Skipping pre-build."
                      fi
+                 )
+             fi
+         fi
     done
 else
     echo "No settings.gradle found in $TARGET_DIR"
