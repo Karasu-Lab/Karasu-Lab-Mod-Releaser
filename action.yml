@@ -53,7 +53,6 @@ runs:
       run: |
         CONFIG_FILE="${{ inputs.config_path }}"
         
-        # Default values
         JAVA_VERSION="21"
         LOADERS="fabric"
         RELEASE_TITLE_FORMAT="{archives_base_name}-{mod_version}-{minecraft_version}"
@@ -65,7 +64,6 @@ runs:
           # Convert JSON array ["fabric", "forge"] to "fabric\nforge" for mc-publish
           LOADERS=$(jq -r '.loaders | join("\n") // "fabric"' "$CONFIG_FILE")
           
-          # Load formats
           RELEASE_TITLE_FORMAT=$(jq -r '.release_title_format // "{archives_base_name}-{mod_version}-{minecraft_version}"' "$CONFIG_FILE")
           JAR_NAME_FORMAT=$(jq -r '.jar_name_format // "{archives_base_name}-{mod_version}-{minecraft_version}.jar"' "$CONFIG_FILE")
         else
@@ -89,7 +87,6 @@ runs:
         set -euo pipefail
         CONFIG_FILE="${{ inputs.config_path }}"
         
-        # Process gradle dependencies if build.gradle exists
         if [ -f "build.gradle" ]; then
           # Extract modImplementation and modApi lines
           GRADLE_DEPS=$(grep -oP '(modImplementation|modApi)\s*[\("]+([^"]+):([^":]+):' build.gradle \
@@ -105,7 +102,6 @@ runs:
            while IFS= read -r maven_coord; do
             [ -z "$maven_coord" ] && continue
             
-            # Look up in config dependencies object
             ENTRY=$(jq -r --arg key "$maven_coord" '.dependencies[$key] // empty' "$CONFIG_FILE")
             [ -z "$ENTRY" ] && continue
 
@@ -114,7 +110,6 @@ runs:
             MODRINTH_ID=$(echo "$ENTRY" | jq -r '.modrinth // empty')
             CF_ID=$(echo "$ENTRY" | jq -r '.curseforge // empty')
 
-            # mc-publish format: name@version(type){modrinth:id}{curseforge:id}
             PLATFORM_BLOCK=""
             [ -n "$MODRINTH_ID" ] && PLATFORM_BLOCK="${PLATFORM_BLOCK}{modrinth:${MODRINTH_ID}}"
             [ -n "$CF_ID" ] && PLATFORM_BLOCK="${PLATFORM_BLOCK}{curseforge:${CF_ID}}"
@@ -123,7 +118,6 @@ runs:
           done <<< "$GRADLE_DEPS"
         fi
 
-        # Write to outputs (multiline)
         {
           echo "mc_publish_deps<<DEPS_EOF"
           echo "$MC_PUBLISH_DEPS"
@@ -136,9 +130,20 @@ runs:
       shell: bash
       run: |
         if [ -f "gradle.properties" ]; then
-            ARCHIVES_BASE_NAME=$(awk -F= '/^archives_base_name/ {gsub(/[[:space:]]/, "", $2); print $2}' gradle.properties)
-            MINECRAFT_VERSION=$(awk -F= '/^minecraft_version/ {gsub(/[[:space:]]/, "", $2); print $2}' gradle.properties)
-            MOD_VERSION=$(awk -F= '/^mod_version/ {gsub(/[[:space:]]/, "", $2); print $2}' gradle.properties)
+            ARCHIVES_BASE_NAME=$(grep -oP '(?i)^(archives_?base_?name)\s*=\s*\K[^\s]+' gradle.properties || echo "")
+            MINECRAFT_VERSION=$(grep -oP '(?i)^(minecraft_?version)\s*=\s*\K[^\s]+' gradle.properties || echo "")
+            MOD_VERSION=$(grep -oP '(?i)^(mod_?version)\s*=\s*\K[^\s]+' gradle.properties || echo "")
+            
+            echo "Extracted properties:"
+            echo "ARCHIVES_BASE_NAME: '$ARCHIVES_BASE_NAME'"
+            echo "MINECRAFT_VERSION: '$MINECRAFT_VERSION'"
+            echo "MOD_VERSION: '$MOD_VERSION'"
+
+            if [ -z "$ARCHIVES_BASE_NAME" ] || [ -z "$MINECRAFT_VERSION" ] || [ -z "$MOD_VERSION" ]; then
+              echo "Error: Failed to extract one or more required properties from gradle.properties."
+              echo "Please ensure archives_base_name, minecraft_version, and mod_version are defined."
+              exit 1
+            fi
             
             echo "archives_base_name=$ARCHIVES_BASE_NAME" >> $GITHUB_OUTPUT
             echo "minecraft_version=$MINECRAFT_VERSION" >> $GITHUB_OUTPUT
