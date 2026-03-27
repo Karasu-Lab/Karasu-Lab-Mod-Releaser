@@ -27,7 +27,7 @@ else
 fi
 
 if [ -f "$CONFIG_FILE" ]; then
-    EXTRA_DEPS=$(jq -r '.extra_dependencies[] // empty' "$CONFIG_FILE")
+    EXTRA_DEPS=$(jq -r '.extra_dependencies // [] | .[]' "$CONFIG_FILE")
     if [ -n "$EXTRA_DEPS" ]; then
         GRADLE_DEPS="${GRADLE_DEPS}"$'\n'"${EXTRA_DEPS}"
     fi
