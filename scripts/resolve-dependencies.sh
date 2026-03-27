@@ -8,8 +8,8 @@ else
 fi
 GRADLE_DEPS=""
 while IFS= read -r f; do
-    DEPS=$(grep -oP '(modImplementation|modApi|modRuntimeOnly|implementation|api|runtimeOnly)\s*[\("]+([^"'\':]+):([^"'\':]+)[:"'\']' "$f" \
-    | sed -E 's/.*["'\'']([^"'\':]+:[^"'\':]+)["'\''].*/\1/' \
+    DEPS=$(grep -oP "(modImplementation|modApi|modRuntimeOnly|implementation|api|runtimeOnly)\s*[\(\"' ]+[^\"': ]+:[^\"': ]+" "$f" \
+    | sed -E 's/.*[\(\"'\'']([^"'\'' :]+:[^"'\'' :]+).*/\1/' \
     | sort -u || true)
     if [ -n "$DEPS" ]; then
         GRADLE_DEPS="${GRADLE_DEPS}"$'\n'"${DEPS}"
