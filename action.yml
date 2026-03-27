@@ -33,11 +33,22 @@ inputs:
     description: 'Working directory for the mod project'
     required: false
     default: '.'
+  skip_release_please:
+    description: 'Skip internal release-please call'
+    required: false
+    default: 'false'
+  tag_name:
+    description: 'Tag name (required if skip_release_please is true)'
+    required: false
+  release_body:
+    description: 'Release body (required if skip_release_please is true)'
+    required: false
 
 runs:
   using: "composite"
   steps:
     - name: Run Release Please
+      if: ${{ inputs.skip_release_please == 'false' }}
       id: release
       uses: googleapis/release-please-action@v4
       with:
@@ -47,75 +58,80 @@ runs:
         target-branch: ${{ github.ref_name }}
 
     - name: Checkout
-      if: ${{ steps.release.outputs.release_created }}
+      if: ${{ inputs.skip_release_please == 'true' || steps.release.outputs.release_created }}
       uses: actions/checkout@v4
 
     - name: Load Config
-      if: ${{ steps.release.outputs.release_created }}
+      if: ${{ inputs.skip_release_please == 'true' || steps.release.outputs.release_created }}
       id: config
       shell: bash
       run: bash ${{ github.action_path }}/scripts/load-config.sh "${{ inputs.working_directory }}" "${{ inputs.config_path }}"
 
     - name: Resolve Dependencies
-      if: ${{ steps.release.outputs.release_created }}
+      if: ${{ inputs.skip_release_please == 'true' || steps.release.outputs.release_created }}
       id: deps
       shell: bash
       run: bash ${{ github.action_path }}/scripts/resolve-dependencies.sh "${{ inputs.working_directory }}" "${{ inputs.config_path }}"
 
     - name: Extract Gradle Properties
-      if: ${{ steps.release.outputs.release_created }}
+      if: ${{ inputs.skip_release_please == 'true' || steps.release.outputs.release_created }}
       id: props
       shell: bash
       run: bash ${{ github.action_path }}/scripts/extract-props.sh "${{ inputs.working_directory }}"
 
     - name: Construct Names
-      if: ${{ steps.release.outputs.release_created }}
+      if: ${{ inputs.skip_release_please == 'true' || steps.release.outputs.release_created }}
       id: names
       shell: bash
       run: |
+        TAG_NAME="${{ inputs.tag_name || steps.release.outputs.tag_name }}"
         bash ${{ github.action_path }}/scripts/construct-names.sh \
           "${{ steps.config.outputs.release_title_format }}" \
           "${{ steps.config.outputs.jar_name_format }}" \
           "${{ steps.props.outputs.archives_base_name }}" \
           "${{ steps.props.outputs.minecraft_version }}" \
           "${{ steps.props.outputs.mod_version }}" \
-          "${{ steps.release.outputs.tag_name }}"
+          "$TAG_NAME" \
+          "${{ steps.config.outputs.loaders }}"
 
     - name: Set up JDK
-      if: ${{ steps.release.outputs.release_created }}
+      if: ${{ inputs.skip_release_please == 'true' || steps.release.outputs.release_created }}
       uses: actions/setup-java@v4
       with:
         java-version: ${{ steps.config.outputs.java_version }}
         distribution: 'temurin'
 
     - name: Grant execute permission for gradlew
-      if: ${{ steps.release.outputs.release_created }}
+      if: ${{ inputs.skip_release_please == 'true' || steps.release.outputs.release_created }}
       shell: bash
       run: chmod +x gradlew
 
     - name: Build Included Builds
-      if: ${{ steps.release.outputs.release_created }}
+      if: ${{ inputs.skip_release_please == 'true' || steps.release.outputs.release_created }}
       shell: bash
       run: bash ${{ github.action_path }}/scripts/build-included-builds.sh "${{ inputs.working_directory }}"
 
     - name: Build with Gradle
-      if: ${{ steps.release.outputs.release_created }}
+      if: ${{ inputs.skip_release_please == 'true' || steps.release.outputs.release_created }}
       shell: bash
       run: ./gradlew build
 
     - name: Upload to GitHub Release
-      if: ${{ steps.release.outputs.release_created }}
+      if: ${{ inputs.skip_release_please == 'true' || steps.release.outputs.release_created }}
       shell: bash
       env:
         GITHUB_TOKEN: ${{ github.token }}
       run: |
+        TAG_NAME="${{ inputs.tag_name || steps.release.outputs.tag_name }}"
         TARGET_DIR="${{ inputs.working_directory }}"
-        gh release upload ${{ steps.release.outputs.tag_name }} \
-          "$TARGET_DIR/build/libs/${{ steps.names.outputs.final_jar_name }}" \
-          --clobber
+        echo -e "${{ steps.names.outputs.final_jar_paths }}" | while read JAR_PATH; do
+          if [ -n "$JAR_PATH" ]; then
+            gh release upload "$TAG_NAME" "$TARGET_DIR/$JAR_PATH" --clobber
+          fi
+        done
 
     - name: Publish to Modrinth & CurseForge
-      if: ${{ steps.release.outputs.release_created }}
+      if: ${{ inputs.skip_release_please == 'true' || steps.release.outputs.release_created }}
       uses: Kir-Antipov/mc-publish@v3.3
       with:
         modrinth-id: ${{ inputs.modrinth_project_id }}
@@ -123,11 +139,11 @@ runs:
         curseforge-id: ${{ inputs.curseforge_project_id }}
         curseforge-token: ${{ inputs.curseforge_token }}
         files: |
-          ${{ inputs.working_directory }}/build/libs/${{ steps.names.outputs.final_jar_name }}
+          ${{ steps.names.outputs.final_jar_paths }}
         name: "${{ steps.names.outputs.final_release_title }}"
-        version: ${{ steps.release.outputs.tag_name }}
+        version: ${{ inputs.tag_name || steps.release.outputs.tag_name }}
         version-type: ${{ steps.config.outputs.release_channel }}
-        changelog: ${{ steps.release.outputs.body }}
+        changelog: ${{ inputs.release_body || steps.release.outputs.body }}
         loaders: ${{ steps.config.outputs.loaders }}
         game-versions: ${{ steps.props.outputs.minecraft_version }}
         dependencies: ${{ steps.deps.outputs.mc_publish_deps }}
