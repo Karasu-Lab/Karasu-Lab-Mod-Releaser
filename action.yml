@@ -92,7 +92,8 @@ runs:
           "${{ steps.props.outputs.minecraft_version }}" \
           "${{ steps.props.outputs.mod_version }}" \
           "$TAG_NAME" \
-          "${{ steps.config.outputs.loaders }}"
+          "${{ steps.config.outputs.loaders }}" \
+          "${{ steps.config.outputs.jar_path_format }}"
 
     - name: Set up JDK
       if: ${{ inputs.skip_release_please == 'true' || steps.release.outputs.release_created }}
