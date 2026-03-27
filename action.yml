@@ -1,47 +1,47 @@
-name: 'KarasuLab Mod Releaser'
-description: 'Automated release workflow for Minecraft mods using Release Please and mc-publish.'
-author: 'KarasuLab'
+name: "KarasuLab Mod Releaser"
+description: "Automated release workflow for Minecraft mods using Release Please and mc-publish."
+author: "KarasuLab"
 branding:
-  icon: 'package'
-  color: 'blue'
+  icon: "package"
+  color: "blue"
 inputs:
   modrinth_project_id:
-    description: 'Modrinth Project ID'
+    description: "Modrinth Project ID"
     required: true
   modrinth_token:
-    description: 'Modrinth Token'
+    description: "Modrinth Token"
     required: true
   curseforge_project_id:
-    description: 'CurseForge Project ID'
+    description: "CurseForge Project ID"
     required: true
   curseforge_token:
-    description: 'CurseForge Token'
+    description: "CurseForge Token"
     required: true
   config_path:
-    description: 'Path to the config file'
+    description: "Path to the config file"
     required: false
-    default: 'karasulab-mod-releaser-config.json'
+    default: "karasulab-mod-releaser-config.json"
   release_please_config:
-    description: 'Path to release-please-config.json'
+    description: "Path to release-please-config.json"
     required: false
-    default: 'release-please-config.json'
+    default: "release-please-config.json"
   release_please_manifest:
-    description: 'Path to .release-please-manifest.json'
+    description: "Path to .release-please-manifest.json"
     required: false
-    default: '.release-please-manifest.json'
+    default: ".release-please-manifest.json"
   working_directory:
-    description: 'Working directory for the mod project'
+    description: "Working directory for the mod project"
     required: false
-    default: '.'
+    default: "."
   skip_release_please:
-    description: 'Skip internal release-please call'
+    description: "Skip internal release-please call"
     required: false
-    default: 'false'
+    default: "false"
   tag_name:
-    description: 'Tag name (required if skip_release_please is true)'
+    description: "Tag name (required if skip_release_please is true)"
     required: false
   release_body:
-    description: 'Release body (required if skip_release_please is true)'
+    description: "Release body (required if skip_release_please is true)"
     required: false
 
 runs:
@@ -100,7 +100,7 @@ runs:
       uses: actions/setup-java@v4
       with:
         java-version: ${{ steps.config.outputs.java_version }}
-        distribution: 'temurin'
+        distribution: "temurin"
 
     - name: Grant execute permission for gradlew
       if: ${{ inputs.skip_release_please == 'true' || steps.release.outputs.release_created }}
@@ -115,7 +115,7 @@ runs:
     - name: Build with Gradle
       if: ${{ inputs.skip_release_please == 'true' || steps.release.outputs.release_created }}
       shell: bash
-      run: ./gradlew build
+      run: ./gradlew build -Pmod_environment=${{ steps.config.outputs.environment }}
 
     - name: Upload to GitHub Release
       if: ${{ inputs.skip_release_please == 'true' || steps.release.outputs.release_created }}
