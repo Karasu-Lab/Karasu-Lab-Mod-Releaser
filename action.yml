@@ -43,6 +43,10 @@ inputs:
   release_body:
     description: "Release body (required if skip_release_please is true)"
     required: false
+  skip_checkout:
+    description: "Skip internal checkout step"
+    required: false
+    default: "false"
 
 runs:
   using: "composite"
@@ -58,7 +62,7 @@ runs:
         target-branch: ${{ github.ref_name }}
 
     - name: Checkout
-      if: ${{ inputs.skip_release_please == 'true' || steps.release.outputs.release_created }}
+      if: ${{ inputs.skip_checkout != 'true' && (inputs.skip_release_please == 'true' || steps.release.outputs.release_created) }}
       uses: actions/checkout@v4
 
     - name: Load Config
