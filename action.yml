@@ -1,155 +1,35 @@
 name: "KarasuLab Mod Releaser"
-description: "Automated release workflow for Minecraft mods using Release Please and mc-publish."
+description: "Automated release workflow for Minecraft mods using Modrinth and CurseForge API."
 author: "KarasuLab"
 branding:
   icon: "package"
   color: "blue"
+
 inputs:
-  modrinth_project_id:
-    description: "Modrinth Project ID"
-    required: true
   modrinth_token:
-    description: "Modrinth Token"
-    required: true
-  curseforge_project_id:
-    description: "CurseForge Project ID"
-    required: true
+    description: "Modrinth API Token"
+    required: false
   curseforge_token:
-    description: "CurseForge Token"
-    required: true
+    description: "CurseForge API Token"
+    required: false
   config_path:
     description: "Path to the config file"
     required: false
     default: "karasulab-mod-releaser-config.json"
-  release_please_config:
-    description: "Path to release-please-config.json"
-    required: false
-    default: "release-please-config.json"
-  release_please_manifest:
-    description: "Path to .release-please-manifest.json"
-    required: false
-    default: ".release-please-manifest.json"
   working_directory:
     description: "Working directory for the mod project"
     required: false
     default: "."
-  skip_release_please:
-    description: "Skip internal release-please call"
+  files:
+    description: "Files to upload (e.g., build/libs/*.jar), supports glob patterns"
+    required: true
+  version_name:
+    description: "The name of the version (e.g. 1.0.0)"
+    required: true
+  changelog:
+    description: "Changelog content"
     required: false
-    default: "false"
-  tag_name:
-    description: "Tag name (required if skip_release_please is true)"
-    required: false
-  release_body:
-    description: "Release body (required if skip_release_please is true)"
-    required: false
-  skip_checkout:
-    description: "Skip internal checkout step"
-    required: false
-    default: "false"
 
 runs:
-  using: "composite"
-  steps:
-    - name: Run Release Please
-      if: ${{ inputs.skip_release_please == 'false' }}
-      id: release
-      uses: googleapis/release-please-action@v4
-      with:
-        token: ${{ github.token }}
-        config-file: ${{ inputs.release_please_config }}
-        manifest-file: ${{ inputs.release_please_manifest }}
-        target-branch: ${{ github.ref_name }}
-
-    - name: Checkout
-      if: ${{ inputs.skip_checkout != 'true' && (inputs.skip_release_please == 'true' || steps.release.outputs.release_created) }}
-      uses: actions/checkout@v4
-
-    - name: Load Config
-      if: ${{ inputs.skip_release_please == 'true' || steps.release.outputs.release_created }}
-      id: config
-      shell: bash
-      run: bash ${{ github.action_path }}/scripts/load-config.sh "${{ inputs.working_directory }}" "${{ inputs.config_path }}"
-
-    - name: Resolve Dependencies
-      if: ${{ inputs.skip_release_please == 'true' || steps.release.outputs.release_created }}
-      id: deps
-      shell: bash
-      run: bash ${{ github.action_path }}/scripts/resolve-dependencies.sh "${{ inputs.working_directory }}" "${{ inputs.config_path }}"
-
-    - name: Extract Gradle Properties
-      if: ${{ inputs.skip_release_please == 'true' || steps.release.outputs.release_created }}
-      id: props
-      shell: bash
-      run: bash ${{ github.action_path }}/scripts/extract-props.sh "${{ inputs.working_directory }}"
-
-    - name: Construct Names
-      if: ${{ inputs.skip_release_please == 'true' || steps.release.outputs.release_created }}
-      id: names
-      shell: bash
-      run: |
-        TAG_NAME="${{ inputs.tag_name || steps.release.outputs.tag_name }}"
-        bash ${{ github.action_path }}/scripts/construct-names.sh \
-          "${{ steps.config.outputs.release_title_format }}" \
-          "${{ steps.config.outputs.jar_name_format }}" \
-          "${{ steps.props.outputs.archives_base_name }}" \
-          "${{ steps.props.outputs.minecraft_version }}" \
-          "${{ steps.props.outputs.mod_version }}" \
-          "$TAG_NAME" \
-          "${{ steps.config.outputs.loaders }}" \
-          "${{ steps.config.outputs.jar_path_format }}"
-
-    - name: Set up JDK
-      if: ${{ inputs.skip_release_please == 'true' || steps.release.outputs.release_created }}
-      uses: actions/setup-java@v4
-      with:
-        java-version: ${{ steps.config.outputs.java_version }}
-        distribution: "temurin"
-
-    - name: Grant execute permission for gradlew
-      if: ${{ inputs.skip_release_please == 'true' || steps.release.outputs.release_created }}
-      shell: bash
-      run: chmod +x gradlew
-
-    - name: Build Included Builds
-      if: ${{ inputs.skip_release_please == 'true' || steps.release.outputs.release_created }}
-      shell: bash
-      run: bash ${{ github.action_path }}/scripts/build-included-builds.sh "${{ inputs.working_directory }}"
-
-    - name: Build with Gradle
-      if: ${{ inputs.skip_release_please == 'true' || steps.release.outputs.release_created }}
-      shell: bash
-      run: ./gradlew build -Pmod_environment=${{ steps.config.outputs.environment }}
-
-    - name: Upload to GitHub Release
-      if: ${{ inputs.skip_release_please == 'true' || steps.release.outputs.release_created }}
-      shell: bash
-      env:
-        GITHUB_TOKEN: ${{ github.token }}
-      run: |
-        TAG_NAME="${{ inputs.tag_name || steps.release.outputs.tag_name }}"
-        TARGET_DIR="${{ inputs.working_directory }}"
-        echo -e "${{ steps.names.outputs.final_jar_paths }}" | while read JAR_PATH; do
-          if [ -n "$JAR_PATH" ]; then
-            gh release upload "$TAG_NAME" "$TARGET_DIR/$JAR_PATH" --clobber
-          fi
-        done
-
-    - name: Publish to Modrinth & CurseForge
-      if: ${{ inputs.skip_release_please == 'true' || steps.release.outputs.release_created }}
-      uses: Kir-Antipov/mc-publish@v3.3
-      with:
-        modrinth-id: ${{ inputs.modrinth_project_id }}
-        modrinth-token: ${{ inputs.modrinth_token }}
-        curseforge-id: ${{ inputs.curseforge_project_id }}
-        curseforge-token: ${{ inputs.curseforge_token }}
-        files: |
-          ${{ steps.names.outputs.final_jar_paths }}
-        name: "${{ steps.names.outputs.final_release_title }}"
-        version: ${{ inputs.tag_name || steps.release.outputs.tag_name }}
-        version-type: ${{ steps.config.outputs.release_channel }}
-        changelog: ${{ inputs.release_body || steps.release.outputs.body }}
-        loaders: ${{ steps.config.outputs.loaders }}
-        game-versions: ${{ steps.props.outputs.minecraft_version }}
-        dependencies: ${{ steps.deps.outputs.mc_publish_deps }}
-        java: ${{ steps.config.outputs.java_version }}
+  using: "node20"
+  main: "dist/index.js"
