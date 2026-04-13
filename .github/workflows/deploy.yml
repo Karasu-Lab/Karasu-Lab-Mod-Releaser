@@ -25,7 +25,7 @@ jobs:
         run: vp install
 
       - name: Build
-        run: vp build
+        run: vp run build
 
       - name: Deploy to v1 branch
         run: |
