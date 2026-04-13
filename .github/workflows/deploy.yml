@@ -27,18 +27,19 @@ jobs:
       - name: Build
         run: vp run build
 
-      - name: Deploy to v1 branch
+      - name: Deploy to release branch and tags
         run: |
-          # Remove dist from .gitignore so it can be added
+          # Extract version from package.json
+          VERSION=$(node -p "require('./package.json').version")
+          MAJOR=$(echo $VERSION | cut -d. -f1)
+
           sed -i '/^\/dist$/d' .gitignore
           git add dist .gitignore
 
-          # Setup git config
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
 
-          # Commit the changes securely without tracking them on main
-          git commit -m "build: publish dist payload for action"
+          git commit -m "build: publish dist payload for v${VERSION}"
 
-          # Push the commit to the v1 branch (force push to overwrite previous v1)
-          git push -f origin HEAD:v1
+          git push -f origin HEAD:v${MAJOR}
+          git push -f origin HEAD:refs/tags/v${VERSION}
