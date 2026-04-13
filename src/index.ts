@@ -84,6 +84,13 @@ async function run() {
     const inputs = getInputs();
     const config = loadConfig(inputs.workingDirectory, inputs.configPath);
 
+    if (!inputs.changelog) {
+      core.warning(
+        "No changelog content provided. Platforms may display 'No changelog specified.' " +
+          "Pass the 'changelog' input (e.g. from Release Please outputs.body) to include release notes.",
+      );
+    }
+
     const allFiles = await resolveFiles(inputs.files, inputs.workingDirectory);
     if (allFiles.length === 0) {
       core.setFailed(`No files found matching pattern: ${inputs.files}`);
