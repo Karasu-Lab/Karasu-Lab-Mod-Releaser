@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.0.3](https://github.com/Karasu-Lab/Karasu-Lab-Mod-Releaser/compare/v3.0.2...v3.0.3) (2026-04-13)
+
+
+### Bug Fixes
+
+* fixed action version logic ([5b39407](https://github.com/Karasu-Lab/Karasu-Lab-Mod-Releaser/commit/5b3940719348a2b84160af19ff97e2c5bd1ca823))
+
 ## [3.0.2](https://github.com/Karasu-Lab/Karasu-Lab-Mod-Releaser/compare/v3.0.1...v3.0.2) (2026-04-13)
 
 ### Bug Fixes
