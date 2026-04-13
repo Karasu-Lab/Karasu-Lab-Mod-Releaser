@@ -5,13 +5,22 @@ import { getInputs, loadConfig } from "./config";
 import { createModrinthVersion, FileData } from "./modrinth";
 import { createCurseForgeVersion } from "./curseforge";
 
+const EXCLUDED_SUFFIXES = ["-javadoc", "-sources", "-dev", "-dev-shadow"];
+
+function isModJar(filename: string): boolean {
+  const lowerName = filename.toLowerCase();
+  return EXCLUDED_SUFFIXES.every((suffix) => !lowerName.endsWith(`${suffix}.jar`));
+}
+
 async function resolveFiles(pattern: string, workspaceDir: string): Promise<FileData[]> {
   const globber = await glob.create(path.resolve(workspaceDir, pattern));
   const files = await globber.glob();
-  return files.map((f) => ({
-    absolutePath: f,
-    name: path.basename(f),
-  }));
+  return files
+    .filter((f) => isModJar(path.basename(f)))
+    .map((f) => ({
+      absolutePath: f,
+      name: path.basename(f),
+    }));
 }
 
 import { z } from "zod";
@@ -46,9 +55,9 @@ function filterFilesForLoader(files: FileData[], loader: string): FileData[] {
   const matches = mappedFiles.filter((m) => {
     switch (lowerLoader) {
       case SupportedLoadersSchema.enum.fabric:
-        return m.hasFabric;
+        return m.hasFabric && !m.hasNeoForge && !m.hasForge;
       case SupportedLoadersSchema.enum.forge:
-        return m.hasForge;
+        return m.hasForge && !m.hasNeoForge;
       case SupportedLoadersSchema.enum.neoforge:
         return m.hasNeoForge;
       case SupportedLoadersSchema.enum.quilt:
