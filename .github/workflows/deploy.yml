@@ -1,0 +1,44 @@
+name: Deploy Action
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          cache: true
+
+      - name: Install dependencies
+        run: vp install
+
+      - name: Build
+        run: vp build
+
+      - name: Deploy to v1 branch
+        run: |
+          # Remove dist from .gitignore so it can be added
+          sed -i '/^\/dist$/d' .gitignore
+          git add dist .gitignore
+
+          # Setup git config
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+
+          # Commit the changes securely without tracking them on main
+          git commit -m "build: publish dist payload for action"
+
+          # Push the commit to the v1 branch (force push to overwrite previous v1)
+          git push -f origin HEAD:v1
