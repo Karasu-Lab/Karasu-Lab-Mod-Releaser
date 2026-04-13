@@ -1,10 +1,8 @@
 name: Deploy Action
 
 on:
-  push:
-    branches:
-      - main
-  workflow_dispatch:
+  release:
+    types: [created]
 
 permissions:
   contents: write
@@ -15,6 +13,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
 
       - name: Setup Vite+
         uses: voidzero-dev/setup-vp@v1
@@ -27,11 +27,10 @@ jobs:
       - name: Build
         run: vp run build
 
-      - name: Deploy to release branch and tags
+      - name: Deploy to major version branch
         run: |
-          # Extract version from package.json
-          VERSION=$(node -p "require('./package.json').version")
-          MAJOR=$(echo $VERSION | cut -d. -f1)
+          VERSION="${{ github.event.release.tag_name }}"
+          MAJOR=$(echo "${VERSION#v}" | cut -d. -f1)
 
           sed -i '/^\/dist$/d' .gitignore
           git add dist .gitignore
@@ -39,7 +38,6 @@ jobs:
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
 
-          git commit -m "build: publish dist payload for v${VERSION}"
+          git commit -m "build: publish dist payload for ${VERSION}"
 
           git push -f origin HEAD:v${MAJOR}
-          git push -f origin HEAD:refs/tags/v${VERSION}
