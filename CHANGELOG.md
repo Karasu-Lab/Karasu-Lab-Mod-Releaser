@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.0.1](https://github.com/Karasu-Lab/Karasu-Lab-Mod-Releaser/compare/v3.0.0...v3.0.1) (2026-04-13)
+
+
+### Bug Fixes
+
+* fixed dist file is not exists ([f0e5133](https://github.com/Karasu-Lab/Karasu-Lab-Mod-Releaser/commit/f0e5133e34a04cb2702311e4a140d923cfb212ad))
+
 ## [3.0.0](https://github.com/Karasu-Lab/Karasu-Lab-Mod-Releaser/compare/v2.2.7...v3.0.0) (2026-04-13)
 
 
